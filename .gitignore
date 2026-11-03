@@ -1,0 +1,74 @@
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# Editor & IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.cursorignore
+.cursorrules
+.zed/
+
+# Environment and local secrets
+.env
+.env.local
+.env.*.local
+*.env.local
+*.env.staging
+*.env.secrets
+*.secret.exs
+!*.env.example
+
+# Logs and debugging
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Node.js / Frontend dependencies and build outputs
+node_modules/
+.pnp
+.pnp.js
+.next/
+out/
+dist/
+.eslintcache
+*.tsbuildinfo
+
+# Testing and coverage
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# Elixir / Erlang / Backend artifacts
+_build/
+deps/
+*.beam
+*.ez
+erl_crash.dump
+dump.rdb
+.elixir_ls/
+.sobelow
+priv/plts/
+
+# Docker and local state
+local/*.env*
+docker-compose/services/*-data/
+docker-compose/tmp/
+
