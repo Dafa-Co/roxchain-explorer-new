@@ -131,24 +131,12 @@ const Stats = () => {
         href: { pathname: '/blocks' as const },
         isLoading,
       },
-      (statsData?.average_block_time?.value || apiData?.average_block_time) && {
+      (statsData?.average_block_time?.value || apiData?.average_block_time || config.chain.blockPeriod.active) && {
         id: 'average_block_time' as const,
         icon: 'clock-light' as const,
-        label: config.chain.blockPeriod.active && config.chain.blockPeriod.idle ?
-          'Block time' :
-          statsData?.average_block_time?.title || 'Average block time',
-        // RoxChain: an average mixes busy (1s) and idle (60s) blocks, so show the configured periods when they are set
-        value: config.chain.blockPeriod.active && config.chain.blockPeriod.idle ?
-          `${ config.chain.blockPeriod.active }s · ${ config.chain.blockPeriod.idle }s idle` :
-          `${
-            statsData?.average_block_time?.value ?
-              Number(statsData.average_block_time.value).toFixed(1) :
-              (apiData!.average_block_time / 1000).toFixed(1)
-          }s`,
-        hint: config.chain.blockPeriod.active && config.chain.blockPeriod.idle ?
-          `A new block every ${ config.chain.blockPeriod.active }s while there are transactions, ` +
-          `and every ${ config.chain.blockPeriod.idle }s when the network is idle.` :
-          undefined,
+        label: 'Block time',
+        // RoxChain: block time is always 1s
+        value: `${ config.chain.blockPeriod.active || 1 }s`,
         isLoading,
       },
       (statsData?.total_transactions?.value || apiData?.total_transactions) && {
