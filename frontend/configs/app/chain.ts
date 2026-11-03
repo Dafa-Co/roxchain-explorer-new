@@ -47,10 +47,9 @@ const chain = Object.freeze({
   secondaryCoin: {
     symbol: getEnvValue('NEXT_PUBLIC_NETWORK_SECONDARY_COIN_SYMBOL'),
   },
-  // RoxChain (QBFT): block period while there are transactions, and the longer period of an idle chain (emptyblockperiodseconds)
+  // RoxChain (QBFT): block period
   blockPeriod: {
-    active: Number(getEnvValue('NEXT_PUBLIC_NETWORK_BLOCK_PERIOD_SECONDS')) || undefined,
-    idle: Number(getEnvValue('NEXT_PUBLIC_NETWORK_EMPTY_BLOCK_PERIOD_SECONDS')) || undefined,
+    active: Number(getEnvValue('NEXT_PUBLIC_NETWORK_BLOCK_PERIOD_SECONDS')) || 1,
   },
   hasMultipleGasCurrencies: getEnvValue('NEXT_PUBLIC_NETWORK_MULTIPLE_GAS_CURRENCIES') === 'true',
   tokenStandard: getEnvValue('NEXT_PUBLIC_NETWORK_TOKEN_STANDARD_NAME') || 'ERC',

@@ -33,7 +33,7 @@ Other consequences:
   - Removed: all ads and sponsored banners, the page-view tracking call to Blockscout, the API docs page, the contract verification pages, the "Other" menu and the "Add network" button.
   - Sidebar groups are listed in place (heading + links) instead of fly-out menus.
   - Unit names come from settings (`bitrox` / `Gbitrox` instead of wei / Gwei).
-  - New settings: `NEXT_PUBLIC_HOMEPAGE_HERO_TITLE`, `NEXT_PUBLIC_NETWORK_TESTNET_LABEL`, `NEXT_PUBLIC_NETWORK_BLOCK_PERIOD_SECONDS`, `NEXT_PUBLIC_NETWORK_EMPTY_BLOCK_PERIOD_SECONDS`.
+  - New settings: `NEXT_PUBLIC_HOMEPAGE_HERO_TITLE`, `NEXT_PUBLIC_NETWORK_TESTNET_LABEL`, `NEXT_PUBLIC_NETWORK_BLOCK_PERIOD_SECONDS`.
 
 ## Running locally
 

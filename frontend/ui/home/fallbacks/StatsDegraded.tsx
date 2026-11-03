@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import BigNumber from 'bignumber.js';
 import React from 'react';
 
+import config from 'configs/app';
 import dayjs from 'lib/date/dayjs';
 import { publicClient } from 'lib/web3/client';
 import { mdash } from 'toolkit/utils/htmlEntities';
@@ -92,10 +93,9 @@ const StatsDegraded = () => {
       {
         id: 'average_block_time' as const,
         icon: 'clock-light' as const,
-        label: 'Average block time',
-        value: averageBlockTime ? `${ averageBlockTime.toFixed(1) }s` : mdash,
-        isFallback: averageBlockTime === undefined,
-        hint: averageBlockTime && !isLoading ? <FallbackRpcIcon/> : undefined,
+        label: 'Block time',
+        value: `${ config.chain.blockPeriod.active || 1 }s`,
+        isFallback: false,
       },
       {
         id: 'total_txs' as const,
