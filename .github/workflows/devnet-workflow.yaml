@@ -1,0 +1,36 @@
+name: Deploy devnet explorer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy-devnet
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 60m
+          script: |
+            set -e
+            cd /apps/sandbox/roxchain-explorer-new
+            git pull --ff-only
+
+            VERSION=$(grep -m1 -oP 'version: "\K[^"]+' backend/mix.exs)
+            docker build -f backend/docker/Dockerfile --build-arg RELEASE_VERSION=$VERSION -t roxchain-explorer-backend backend
+            docker build -t roxchain-explorer-frontend frontend
+
+            cd local
+            docker compose up -d
+            sleep 30
+            curl -fsS https://devnet.explorer.roxchain.io/api/v2/stats > /dev/null
+            curl -fsS https://devnet.explorer.roxchain.io/ > /dev/null
+
+            docker image prune -f
