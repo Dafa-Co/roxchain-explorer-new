@@ -1,0 +1,276 @@
+name: Deploy production explorer
+
+# Production is deployed by hand only: Actions → "Deploy production explorer" → Run workflow, from main.
+# The deploy job then waits for a reviewer of the `production` environment.
+#
+#   build-backend ─┐  (build role: push to the two ECR repositories, nothing else)
+#   build-frontend ┴─ deploy  (deploy role: describe the cluster; in Kubernetes only the
+#                              explorer-deployer Role in namespace roxchain-explorer)
+#
+# One-time setup (namespace, RBAC, IAM roles, ECR repositories, secret, ingress): k8s/prod/bootstrap/README.md
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+# nothing by default; every job asks for what it needs
+permissions: {}
+
+env:
+  AWS_REGION: eu-north-1
+  EKS_CLUSTER: rox-eks-cluster
+  NAMESPACE: roxchain-explorer
+  ECR_REGISTRY: 780202038201.dkr.ecr.eu-north-1.amazonaws.com
+  BACKEND_REPO: roxchain-explorer-backend
+  FRONTEND_REPO: roxchain-explorer-frontend
+  BUILD_ROLE: arn:aws:iam::780202038201:role/gh-roxchain-explorer-new-prod-build-role
+  DEPLOY_ROLE: arn:aws:iam::780202038201:role/gh-roxchain-explorer-new-prod-deploy-role
+
+jobs:
+  # Each image is tagged with the commit SHA. The repositories have immutable tags, so a re-run of
+  # the same commit reuses the image that is already there instead of building it again.
+  build-backend:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ env.BUILD_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Look for an image of this commit
+        id: existing
+        run: |
+          DIGEST=$(aws ecr describe-images --repository-name "$BACKEND_REPO" \
+            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)
+          if [[ "$DIGEST" == sha256:* ]]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Reusing $BACKEND_REPO:$GITHUB_SHA ($DIGEST)"
+          fi
+
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        if: steps.existing.outputs.found != 'true'
+
+      - name: Read release version
+        if: steps.existing.outputs.found != 'true'
+        id: version
+        run: |
+          echo "version=$(grep -m1 -oP 'version: "\K[^"]+' backend/mix.exs)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        if: steps.existing.outputs.found != 'true'
+
+      - name: Build backend image
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: backend
+          file: backend/docker/Dockerfile
+          build-args: RELEASE_VERSION=${{ steps.version.outputs.version }}
+          load: true
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_REPO }}:${{ github.sha }}
+          cache-from: type=gha,scope=prod-backend
+          cache-to: type=gha,scope=prod-backend,mode=max
+
+      # an image with a fixable critical/high vulnerability or an embedded secret never reaches ECR
+      - name: Scan backend image
+        if: steps.existing.outputs.found != 'true'
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_REPO }}:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+
+      - name: Push backend image
+        if: steps.existing.outputs.found != 'true'
+        run: docker push "$ECR_REGISTRY/$BACKEND_REPO:$GITHUB_SHA"
+
+      - name: Read image digest
+        id: digest
+        run: |
+          DIGEST=$(aws ecr describe-images --repository-name "$BACKEND_REPO" \
+            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text)
+          [[ "$DIGEST" == sha256:* ]] || { echo "no digest for $BACKEND_REPO:$GITHUB_SHA"; exit 1; }
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+  build-frontend:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ env.BUILD_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Look for an image of this commit
+        id: existing
+        run: |
+          DIGEST=$(aws ecr describe-images --repository-name "$FRONTEND_REPO" \
+            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)
+          if [[ "$DIGEST" == sha256:* ]]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Reusing $FRONTEND_REPO:$GITHUB_SHA ($DIGEST)"
+          fi
+
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        if: steps.existing.outputs.found != 'true'
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        if: steps.existing.outputs.found != 'true'
+
+      - name: Build frontend image
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: frontend
+          build-args: GIT_COMMIT_SHA=${{ github.sha }}
+          load: true
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_REPO }}:${{ github.sha }}
+          cache-from: type=gha,scope=prod-frontend
+          cache-to: type=gha,scope=prod-frontend,mode=max
+
+      - name: Scan frontend image
+        if: steps.existing.outputs.found != 'true'
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_REPO }}:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+
+      - name: Push frontend image
+        if: steps.existing.outputs.found != 'true'
+        run: docker push "$ECR_REGISTRY/$FRONTEND_REPO:$GITHUB_SHA"
+
+      - name: Read image digest
+        id: digest
+        run: |
+          DIGEST=$(aws ecr describe-images --repository-name "$FRONTEND_REPO" \
+            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text)
+          [[ "$DIGEST" == sha256:* ]] || { echo "no digest for $FRONTEND_REPO:$GITHUB_SHA"; exit 1; }
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: [build-backend, build-frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # required reviewers and the "main only" branch rule are set on this environment in GitHub;
+    # the deploy role trusts only tokens issued for it
+    environment:
+      name: production
+      url: https://new.explorer.roxchain.io
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      BACKEND_DIGEST: ${{ needs.build-backend.outputs.digest }}
+      FRONTEND_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Refuse placeholder settings
+        run: |
+          # values only: the comment lines that explain this check also contain the word
+          if grep -rnE '^[^#]*CHANGE_ME' k8s/prod --include='*.env' --include='*.conf' --include='*.yaml'; then
+            echo "::error::Fill in the CHANGE_ME values above before deploying to production."
+            exit 1
+          fi
+
+      # pins the images by digest, so the cluster runs exactly what was scanned
+      - name: Render manifests
+        run: |
+          # kustomize only accepts relative resource paths, so the overlay sits next to k8s/prod
+          OVERLAY="$GITHUB_WORKSPACE/k8s/ci-overlay"
+          mkdir -p "$OVERLAY"
+          cat > "$OVERLAY/kustomization.yaml" <<EOF
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+          resources:
+            - ../prod
+          images:
+            - name: roxchain-explorer-backend
+              newName: $ECR_REGISTRY/$BACKEND_REPO
+              digest: $BACKEND_DIGEST
+            - name: roxchain-explorer-frontend
+              newName: $ECR_REGISTRY/$FRONTEND_REPO
+              digest: $FRONTEND_DIGEST
+          EOF
+          kubectl kustomize --load-restrictor=LoadRestrictionsNone "$OVERLAY" > "$RUNNER_TEMP/rendered.yaml"
+          grep -n 'image:' "$RUNNER_TEMP/rendered.yaml"
+
+      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
+        with:
+          version: v1.35.9
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubeconfig
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+
+      - name: Show changes
+        run: kubectl diff -n "$NAMESPACE" -f "$RUNNER_TEMP/rendered.yaml" || [ $? -eq 1 ]
+
+      - name: Apply
+        run: |
+          kubectl apply -n "$NAMESPACE" --server-side --field-manager=github-actions-explorer \
+            -f "$RUNNER_TEMP/rendered.yaml"
+
+      # a failed rollout leaves the previous pods serving (maxUnavailable: 0)
+      - name: Wait for rollout
+        run: |
+          for D in explorer-proxy explorer-backend explorer-frontend; do
+            kubectl -n "$NAMESPACE" rollout status "deployment/$D" --timeout=15m
+          done
+
+      # inside the cluster, through the API server: works before DNS and the ALB exist
+      - name: Smoke test
+        run: |
+          SVC="/api/v1/namespaces/$NAMESPACE/services"
+          kubectl get --raw "$SVC/explorer-backend:http/proxy/api/v2/stats" > /dev/null
+          kubectl get --raw "$SVC/explorer-frontend:http/proxy/api/healthz" > /dev/null
+          kubectl get --raw "$SVC/explorer-frontend:http/proxy/" > /dev/null
+          kubectl get --raw "$SVC/explorer-proxy:http/proxy/healthz" > /dev/null
+          echo "backend, frontend and proxy answer"
+
+      - name: Show why the rollout failed
+        if: failure()
+        run: |
+          kubectl -n "$NAMESPACE" get deploy,rs,pods -o wide || true
+          kubectl -n "$NAMESPACE" describe pods -l app.kubernetes.io/part-of=roxchain-explorer | tail -n 200 || true
+          kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -n 50 || true
