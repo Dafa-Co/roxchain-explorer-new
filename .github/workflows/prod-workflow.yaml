@@ -201,36 +201,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Refuse placeholder settings
-        run: |
-          # values only: the comment lines that explain this check also contain the word
-          if grep -rnE '^[^#]*CHANGE_ME' k8s/prod --include='*.env' --include='*.conf' --include='*.yaml'; then
-            echo "::error::Fill in the CHANGE_ME values above before deploying to production."
-            exit 1
-          fi
-
-      # pins the images by digest, so the cluster runs exactly what was scanned
-      - name: Render manifests
-        run: |
-          # kustomize only accepts relative resource paths, so the overlay sits next to k8s/prod
-          OVERLAY="$GITHUB_WORKSPACE/k8s/ci-overlay"
-          mkdir -p "$OVERLAY"
-          cat > "$OVERLAY/kustomization.yaml" <<EOF
-          apiVersion: kustomize.config.k8s.io/v1beta1
-          kind: Kustomization
-          resources:
-            - ../prod
-          images:
-            - name: roxchain-explorer-backend
-              newName: $ECR_REGISTRY/$BACKEND_REPO
-              digest: $BACKEND_DIGEST
-            - name: roxchain-explorer-frontend
-              newName: $ECR_REGISTRY/$FRONTEND_REPO
-              digest: $FRONTEND_DIGEST
-          EOF
-          kubectl kustomize --load-restrictor=LoadRestrictionsNone "$OVERLAY" > "$RUNNER_TEMP/rendered.yaml"
-          grep -n 'image:' "$RUNNER_TEMP/rendered.yaml"
-
       - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
         with:
           version: v1.35.9
@@ -243,20 +213,20 @@ jobs:
       - name: Configure kubeconfig
         run: aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
 
-      - name: Show changes
-        run: kubectl diff -n "$NAMESPACE" -f "$RUNNER_TEMP/rendered.yaml" || [ $? -eq 1 ]
-
-      - name: Apply
+      - name: Update container images
         run: |
-          kubectl apply -n "$NAMESPACE" --server-side --field-manager=github-actions-explorer \
-            -f "$RUNNER_TEMP/rendered.yaml"
+          kubectl -n "$NAMESPACE" set image deployment/explorer-backend \
+            backend="$ECR_REGISTRY/$BACKEND_REPO@$BACKEND_DIGEST" \
+            migrate="$ECR_REGISTRY/$BACKEND_REPO@$BACKEND_DIGEST"
+
+          kubectl -n "$NAMESPACE" set image deployment/explorer-frontend \
+            frontend="$ECR_REGISTRY/$FRONTEND_REPO@$FRONTEND_DIGEST"
 
       # a failed rollout leaves the previous pods serving (maxUnavailable: 0)
       - name: Wait for rollout
         run: |
-          for D in explorer-proxy explorer-backend explorer-frontend; do
-            kubectl -n "$NAMESPACE" rollout status "deployment/$D" --timeout=15m
-          done
+          kubectl -n "$NAMESPACE" rollout status deployment/explorer-backend --timeout=15m
+          kubectl -n "$NAMESPACE" rollout status deployment/explorer-frontend --timeout=15m
 
       # inside the cluster, through the API server: works before DNS and the ALB exist
       - name: Smoke test
