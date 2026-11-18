@@ -60,7 +60,12 @@ ARG BLOCKSCOUT_GROUP=blockscout
 ARG BLOCKSCOUT_UID=10001
 ARG BLOCKSCOUT_GID=10001
 
-RUN apk --no-cache --update add jq curl && \
+# upgrade the base image's own packages (openssl, musl, zlib, ...) to the latest fixed versions
+# of this Alpine release; the hexpm image is built once and does not get them otherwise.
+# A new APK_REFRESH value (CI passes the run ID) re-runs this step instead of reusing the cache.
+ARG APK_REFRESH
+RUN apk --no-cache --update upgrade && \
+    apk --no-cache add jq curl && \
     addgroup --system --gid ${BLOCKSCOUT_GID} ${BLOCKSCOUT_GROUP} && \
     adduser --system --uid ${BLOCKSCOUT_UID} --ingroup ${BLOCKSCOUT_GROUP} --disabled-password --home /app ${BLOCKSCOUT_USER}
 
