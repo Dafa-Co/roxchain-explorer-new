@@ -1,6 +1,6 @@
 name: Deploy production explorer
 
-# Production is deployed by hand only: Actions → "Deploy production explorer" → Run workflow, from dev.
+# Production is deployed by hand only: Actions → "Deploy production explorer" → Run workflow, from main.
 # The deploy job then waits for a reviewer of the `production` environment.
 #
 #   build-backend ─┐  (build role: push to the two ECR repositories, nothing else)
@@ -33,7 +33,7 @@ jobs:
   # Each image is tagged with the commit SHA. The repositories have immutable tags, so a re-run of
   # the same commit reuses the image that is already there instead of building it again.
   build-backend:
-    if: github.ref == 'refs/heads/dev'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -55,7 +55,7 @@ jobs:
         id: existing
         run: |
           DIGEST=$(aws ecr describe-images --repository-name "$BACKEND_REPO" \
-            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)
+            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text 2>/main/null || true)
           if [[ "$DIGEST" == sha256:* ]]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "Reusing $BACKEND_REPO:$GITHUB_SHA ($DIGEST)"
@@ -114,7 +114,7 @@ jobs:
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   build-frontend:
-    if: github.ref == 'refs/heads/dev'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -136,7 +136,7 @@ jobs:
         id: existing
         run: |
           DIGEST=$(aws ecr describe-images --repository-name "$FRONTEND_REPO" \
-            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)
+            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text 2>/main/null || true)
           if [[ "$DIGEST" == sha256:* ]]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "Reusing $FRONTEND_REPO:$GITHUB_SHA ($DIGEST)"
@@ -188,10 +188,10 @@ jobs:
 
   deploy:
     needs: [build-backend, build-frontend]
-    if: github.ref == 'refs/heads/dev'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # required reviewers and the "dev only" branch rule are set on this environment in GitHub;
+    # required reviewers and the "main only" branch rule are set on this environment in GitHub;
     # the deploy role trusts only tokens issued for it
     environment:
       name: production
@@ -238,10 +238,10 @@ jobs:
       - name: Smoke test
         run: |
           SVC="/api/v1/namespaces/$NAMESPACE/services"
-          kubectl get --raw "$SVC/explorer-backend:http/proxy/api/v2/stats" > /dev/null
-          kubectl get --raw "$SVC/explorer-frontend:http/proxy/api/healthz" > /dev/null
-          kubectl get --raw "$SVC/explorer-frontend:http/proxy/" > /dev/null
-          kubectl get --raw "$SVC/explorer-proxy:http/proxy/healthz" > /dev/null
+          kubectl get --raw "$SVC/explorer-backend:http/proxy/api/v2/stats" > /main/null
+          kubectl get --raw "$SVC/explorer-frontend:http/proxy/api/healthz" > /main/null
+          kubectl get --raw "$SVC/explorer-frontend:http/proxy/" > /main/null
+          kubectl get --raw "$SVC/explorer-proxy:http/proxy/healthz" > /main/null
           echo "backend, frontend and proxy answer"
 
       - name: Show why the rollout failed
