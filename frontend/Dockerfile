@@ -17,51 +17,51 @@ COPY toolkit/theme ./toolkit/theme
 COPY toolkit/utils ./toolkit/utils
 COPY toolkit/components/forms/validators/url.ts ./toolkit/components/forms/validators/url.ts
 RUN apk add git
-RUN yarn --frozen-lockfile --network-timeout 100000
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn --frozen-lockfile --network-timeout 100000
 
 
 ### FEATURE REPORTER
 # Install dependencies
 WORKDIR /feature-reporter
 COPY ./deploy/tools/feature-reporter/package.json ./deploy/tools/feature-reporter/yarn.lock ./
-RUN yarn --frozen-lockfile --network-timeout 100000
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn --frozen-lockfile --network-timeout 100000
 
 
 ### ENV VARIABLES CHECKER
 # Install dependencies
 WORKDIR /envs-validator
 COPY ./deploy/tools/envs-validator/package.json ./deploy/tools/envs-validator/yarn.lock ./
-RUN yarn --frozen-lockfile --network-timeout 100000
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn --frozen-lockfile --network-timeout 100000
 
 ### FAVICON GENERATOR
 # Install dependencies
 WORKDIR /favicon-generator
 COPY ./deploy/tools/favicon-generator/package.json ./deploy/tools/favicon-generator/yarn.lock ./
-RUN yarn --frozen-lockfile --network-timeout 100000
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn --frozen-lockfile --network-timeout 100000
 
 ### SITEMAP GENERATOR
 # Install dependencies
 WORKDIR /sitemap-generator
 COPY ./deploy/tools/sitemap-generator/package.json ./deploy/tools/sitemap-generator/yarn.lock ./
-RUN yarn --frozen-lockfile --network-timeout 100000
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn --frozen-lockfile --network-timeout 100000
 
 ### MULTICHAIN CONFIG GENERATOR
 # Install dependencies
 WORKDIR /multichain-config-generator
 COPY ./deploy/tools/multichain-config-generator/package.json ./deploy/tools/multichain-config-generator/yarn.lock ./
-RUN yarn --frozen-lockfile --network-timeout 100000
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn --frozen-lockfile --network-timeout 100000
 
 ### ESSENTIAL DAPPS CHAINS CONFIG GENERATOR
 # Install dependencies
 WORKDIR /essential-dapps-chains-config-generator
 COPY ./deploy/tools/essential-dapps-chains-config-generator/package.json ./deploy/tools/essential-dapps-chains-config-generator/yarn.lock ./
-RUN yarn --frozen-lockfile --network-timeout 100000
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn --frozen-lockfile --network-timeout 100000
 
 ### llms.txt GENERATOR
 # Install dependencies
 WORKDIR /llms-txt-generator
 COPY ./deploy/tools/llms-txt-generator/package.json ./deploy/tools/llms-txt-generator/yarn.lock ./
-RUN yarn --frozen-lockfile --network-timeout 100000
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn --frozen-lockfile --network-timeout 100000
 
 
 # *****************************
@@ -71,8 +71,8 @@ FROM node:22.23.5-alpine AS builder
 RUN apk add --no-cache --upgrade libc6-compat bash jq
 
 # pass build args to env variables
-ARG GIT_COMMIT_SHA
-ENV NEXT_PUBLIC_GIT_COMMIT_SHA=$GIT_COMMIT_SHA
+# (GIT_COMMIT_SHA is set in the run stage instead: it changes on every commit, and here it would
+# invalidate the cache for `yarn build` even when the frontend source did not change)
 ARG GIT_TAG
 ENV NEXT_PUBLIC_GIT_TAG=$GIT_TAG
 ARG NEXT_OPEN_TELEMETRY_ENABLED
@@ -99,7 +99,9 @@ RUN set -a && \
 
 # Build app for production
 ENV NODE_OPTIONS="--max-old-space-size=8192"
-RUN yarn build
+# .next/cache (webpack/SWC cache) lives in a BuildKit cache mount: reused by later builds on the same
+# builder, and kept out of the image layer
+RUN --mount=type=cache,target=/app/.next/cache yarn build
 
 
 ### FEATURE REPORTER
@@ -164,7 +166,7 @@ RUN mkdir .next
 RUN chown nextjs:nodejs .next
 
 COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/public ./public
+COPY --chmod=777 --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 
 # Copy tools
@@ -186,9 +188,11 @@ COPY --chmod=755 ./deploy/scripts/download_assets.sh .
 COPY ./deploy/scripts/og_image_generator.js .
 ## Favicon generator
 COPY --chmod=755 ./deploy/scripts/favicon_generator.sh .
-COPY --from=builder /app/deploy/tools/favicon-generator ./deploy/tools/favicon-generator
-RUN ["chmod", "-R", "777", "./deploy/tools/favicon-generator"]
-RUN ["chmod", "-R", "777", "./public"]
+# --chmod sets the copied files; the folders themselves need the separate chmod (not -R), because
+# the generator writes output/ into its folder at startup. Same modes as `chmod -R 777` without
+# duplicating every file in a second layer.
+COPY --chmod=777 --from=builder /app/deploy/tools/favicon-generator ./deploy/tools/favicon-generator
+RUN ["chmod", "777", "./deploy/tools/favicon-generator", "./public"]
 ## Sitemap generator
 COPY --chmod=755 ./deploy/scripts/sitemap_generator.sh .
 COPY --from=builder /app/deploy/tools/sitemap-generator ./deploy/tools/sitemap-generator
@@ -206,6 +210,11 @@ COPY ./configs/envs ./configs/envs
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Commit shown in the UI footer. Set last, so a new value only rebuilds this small layer; the
+# entrypoint (make_envs_script.sh) passes NEXT_PUBLIC_* variables to the browser at startup.
+ARG GIT_COMMIT_SHA
+ENV NEXT_PUBLIC_GIT_COMMIT_SHA=$GIT_COMMIT_SHA
 
 ENTRYPOINT ["./entrypoint.sh"]
 
