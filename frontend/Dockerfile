@@ -145,7 +145,15 @@ RUN cd ./deploy/tools/llms-txt-generator && yarn build
 # *****************************
 # Production image, copy all the files and run next
 FROM node:22.14.0-alpine AS runner
-RUN apk add --no-cache --upgrade bash curl jq unzip
+# upgrade the base image's own packages to the latest fixed versions of this Alpine release, and
+# remove npm and corepack: the container never uses them (the entrypoint scripts use node and
+# yarn only), and their bundled packages (tar, glob, minimatch, ...) carry known CVEs.
+# A new APK_REFRESH value (CI passes the run ID) re-runs this step instead of reusing the cache.
+ARG APK_REFRESH
+RUN apk --no-cache --update upgrade && \
+    apk add --no-cache --upgrade bash curl jq unzip && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 ### APP
 WORKDIR /app
