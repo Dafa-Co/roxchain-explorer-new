@@ -1,7 +1,7 @@
 # *****************************
 # *** STAGE 1: Dependencies ***
 # *****************************
-FROM node:22.14.0-alpine AS deps
+FROM node:22.23.5-alpine AS deps
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat python3 make g++
 RUN ln -sf /usr/bin/python3 /usr/bin/python
@@ -67,7 +67,7 @@ RUN yarn --frozen-lockfile --network-timeout 100000
 # *****************************
 # ****** STAGE 2: Build *******
 # *****************************
-FROM node:22.14.0-alpine AS builder
+FROM node:22.23.5-alpine AS builder
 RUN apk add --no-cache --upgrade libc6-compat bash jq
 
 # pass build args to env variables
@@ -144,8 +144,11 @@ RUN cd ./deploy/tools/llms-txt-generator && yarn build
 # ******* STAGE 3: Run ********
 # *****************************
 # Production image, copy all the files and run next
-FROM node:22.14.0-alpine AS runner
-RUN apk add --no-cache --upgrade bash curl jq unzip
+FROM node:22.23.5-alpine AS runner
+RUN apk upgrade --no-cache && \
+    apk add --no-cache bash curl jq unzip && \
+    # npm is not used at runtime; removing it drops its bundled vulnerable deps (tar, pacote, sigstore, glob, ...)
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 ### APP
 WORKDIR /app
