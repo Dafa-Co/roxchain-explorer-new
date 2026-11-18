@@ -30,8 +30,10 @@ env:
   DEPLOY_ROLE: arn:aws:iam::780202038201:role/gh-roxchain-explorer-new-prod-deploy-role
 
 jobs:
-  # Each image is tagged with the commit SHA. The repositories have immutable tags, so a re-run of
-  # the same commit reuses the image that is already there instead of building it again.
+  # Each image is tagged with the git tree hash of its source folder (src-<hash of backend/ or
+  # frontend/>). A run where that folder did not change finds the tag in ECR and reuses the image
+  # (already scanned when it was pushed) instead of building it again: a backend-only change does
+  # not rebuild the frontend, and the reverse. The repositories have immutable tags.
   build-backend:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -51,14 +53,16 @@ jobs:
           role-to-assume: ${{ env.BUILD_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Look for an image of this commit
+      - name: Look for an image of this source
         id: existing
         run: |
+          TAG="src-$(git rev-parse HEAD:backend)"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
           DIGEST=$(aws ecr describe-images --repository-name "$BACKEND_REPO" \
-            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text 2>/main/null || true)
+            --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)
           if [[ "$DIGEST" == sha256:* ]]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "Reusing $BACKEND_REPO:$GITHUB_SHA ($DIGEST)"
+            echo "backend/ is unchanged since $BACKEND_REPO:$TAG was built, reusing it ($DIGEST)"
           fi
 
       - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
@@ -84,7 +88,7 @@ jobs:
             RELEASE_VERSION=${{ steps.version.outputs.version }}
             APK_REFRESH=${{ github.run_id }}
           load: true
-          tags: ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_REPO }}:${{ github.sha }}
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_REPO }}:${{ env.TAG }}
           cache-from: type=gha,scope=prod-backend
           cache-to: type=gha,scope=prod-backend,mode=max
 
@@ -92,8 +96,14 @@ jobs:
       - name: Scan backend image
         if: steps.existing.outputs.found != 'true'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        env:
+          # print only the table of vulnerable packages: no summary of every scanned target,
+          # no VEX or new-version notices in the middle of the log
+          TRIVY_TABLE_MODE: detailed
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+          TRIVY_SKIP_VERSION_CHECK: "true"
         with:
-          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_REPO }}:${{ github.sha }}
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_REPO }}:${{ env.TAG }}
           format: table
           exit-code: "1"
           ignore-unfixed: true
@@ -103,14 +113,14 @@ jobs:
 
       - name: Push backend image
         if: steps.existing.outputs.found != 'true'
-        run: docker push "$ECR_REGISTRY/$BACKEND_REPO:$GITHUB_SHA"
+        run: docker push "$ECR_REGISTRY/$BACKEND_REPO:$TAG"
 
       - name: Read image digest
         id: digest
         run: |
           DIGEST=$(aws ecr describe-images --repository-name "$BACKEND_REPO" \
-            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text)
-          [[ "$DIGEST" == sha256:* ]] || { echo "no digest for $BACKEND_REPO:$GITHUB_SHA"; exit 1; }
+            --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text)
+          [[ "$DIGEST" == sha256:* ]] || { echo "no digest for $BACKEND_REPO:$TAG"; exit 1; }
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   build-frontend:
@@ -132,14 +142,16 @@ jobs:
           role-to-assume: ${{ env.BUILD_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Look for an image of this commit
+      - name: Look for an image of this source
         id: existing
         run: |
+          TAG="src-$(git rev-parse HEAD:frontend)"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
           DIGEST=$(aws ecr describe-images --repository-name "$FRONTEND_REPO" \
-            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text 2>/main/null || true)
+            --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)
           if [[ "$DIGEST" == sha256:* ]]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "Reusing $FRONTEND_REPO:$GITHUB_SHA ($DIGEST)"
+            echo "frontend/ is unchanged since $FRONTEND_REPO:$TAG was built, reusing it ($DIGEST)"
           fi
 
       - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
@@ -158,15 +170,21 @@ jobs:
             GIT_COMMIT_SHA=${{ github.sha }}
             APK_REFRESH=${{ github.run_id }}
           load: true
-          tags: ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_REPO }}:${{ github.sha }}
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_REPO }}:${{ env.TAG }}
           cache-from: type=gha,scope=prod-frontend
           cache-to: type=gha,scope=prod-frontend,mode=max
 
       - name: Scan frontend image
         if: steps.existing.outputs.found != 'true'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        env:
+          # print only the table of vulnerable packages: no summary of every scanned target,
+          # no VEX or new-version notices in the middle of the log
+          TRIVY_TABLE_MODE: detailed
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+          TRIVY_SKIP_VERSION_CHECK: "true"
         with:
-          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_REPO }}:${{ github.sha }}
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_REPO }}:${{ env.TAG }}
           format: table
           exit-code: "1"
           ignore-unfixed: true
@@ -176,14 +194,14 @@ jobs:
 
       - name: Push frontend image
         if: steps.existing.outputs.found != 'true'
-        run: docker push "$ECR_REGISTRY/$FRONTEND_REPO:$GITHUB_SHA"
+        run: docker push "$ECR_REGISTRY/$FRONTEND_REPO:$TAG"
 
       - name: Read image digest
         id: digest
         run: |
           DIGEST=$(aws ecr describe-images --repository-name "$FRONTEND_REPO" \
-            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text)
-          [[ "$DIGEST" == sha256:* ]] || { echo "no digest for $FRONTEND_REPO:$GITHUB_SHA"; exit 1; }
+            --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text)
+          [[ "$DIGEST" == sha256:* ]] || { echo "no digest for $FRONTEND_REPO:$TAG"; exit 1; }
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   deploy:
