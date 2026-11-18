@@ -1,6 +1,6 @@
 name: Deploy production explorer
 
-# Production is deployed by hand only: Actions → "Deploy production explorer" → Run workflow, from main.
+# Production is deployed by hand only: Actions → "Deploy production explorer" → Run workflow, from dev.
 # The deploy job then waits for a reviewer of the `production` environment.
 #
 #   build-backend ─┐  (build role: push to the two ECR repositories, nothing else)
@@ -33,7 +33,7 @@ jobs:
   # Each image is tagged with the commit SHA. The repositories have immutable tags, so a re-run of
   # the same commit reuses the image that is already there instead of building it again.
   build-backend:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -114,7 +114,7 @@ jobs:
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   build-frontend:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -188,10 +188,10 @@ jobs:
 
   deploy:
     needs: [build-backend, build-frontend]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # required reviewers and the "main only" branch rule are set on this environment in GitHub;
+    # required reviewers and the "dev only" branch rule are set on this environment in GitHub;
     # the deploy role trusts only tokens issued for it
     environment:
       name: production
