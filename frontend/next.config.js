@@ -16,7 +16,7 @@ const moduleExports = {
     'react-syntax-highlighter',
   ],
   reactStrictMode: true,
-  webpack(config) {
+  webpack(config, { isServer, webpack }) {
     config.module.rules.push(
       {
         test: /\.svg$/,
@@ -24,6 +24,16 @@ const moduleExports = {
       },
     );
     config.resolve.fallback = { fs: false, net: false, tls: false };
+
+    if (!isServer) {
+      // libp2p (via @helia/verified-fetch) imports Node built-ins with the "node:" scheme,
+      // which webpack can't resolve for the browser; strip the prefix so fallbacks apply,
+      // and polyfill "stream" since @libp2p/http-utils subclasses Duplex at module load.
+      config.plugins.push(new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+        resource.request = resource.request.replace(/^node:/, '');
+      }));
+      config.resolve.fallback.stream = require.resolve('readable-stream');
+    }
     config.externals.push('pino-pretty', 'lokijs', 'encoding');
     
     config.experiments = { ...config.experiments, topLevelAwait: true };
