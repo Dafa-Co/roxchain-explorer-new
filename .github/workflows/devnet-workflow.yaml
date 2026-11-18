@@ -7,30 +7,151 @@ on:
 
 concurrency: deploy-devnet
 
+permissions:
+  contents: read
+
+env:
+  BACKEND_IMAGE: roxchain-explorer-backend
+  FRONTEND_IMAGE: roxchain-explorer-frontend
+  # where the image archives are copied to on the sandbox host
+  REMOTE_DIR: /tmp/roxchain-deploy-${{ github.sha }}
+
 jobs:
-  deploy:
+  # The two images are built in parallel on GitHub runners (with layer cache),
+  # then shipped to the sandbox host with docker save / docker load.
+  build-backend:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy over SSH
+      - uses: actions/checkout@v4
+
+      - name: Read release version
+        id: version
+        run: |
+          echo "version=$(grep -m1 -oP 'version: "\K[^"]+' backend/mix.exs)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/docker/Dockerfile
+          build-args: RELEASE_VERSION=${{ steps.version.outputs.version }}
+          load: true
+          tags: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Save image
+        run: docker save "$BACKEND_IMAGE:${{ github.sha }}" | gzip > backend.tar.gz
+
+      - name: Copy image to sandbox host
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: backend.tar.gz
+          target: ${{ env.REMOTE_DIR }}
+
+      - name: Load image on sandbox host
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          command_timeout: 60m
+          command_timeout: 15m
+          envs: REMOTE_DIR
           script: |
             set -e
+            gunzip -c "$REMOTE_DIR/backend.tar.gz" | docker load
+            rm -f "$REMOTE_DIR/backend.tar.gz"
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          build-args: GIT_COMMIT_SHA=${{ github.sha }}
+          load: true
+          tags: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: Save image
+        run: docker save "$FRONTEND_IMAGE:${{ github.sha }}" | gzip > frontend.tar.gz
+
+      - name: Copy image to sandbox host
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: frontend.tar.gz
+          target: ${{ env.REMOTE_DIR }}
+
+      - name: Load image on sandbox host
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 15m
+          envs: REMOTE_DIR
+          script: |
+            set -e
+            gunzip -c "$REMOTE_DIR/frontend.tar.gz" | docker load
+            rm -f "$REMOTE_DIR/frontend.tar.gz"
+
+  deploy:
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 20m
+          envs: SHA,BACKEND_IMAGE,FRONTEND_IMAGE,REMOTE_DIR
+          script: |
+            set -e
+            rm -rf "$REMOTE_DIR"
             cd /apps/sandbox/roxchain-explorer-new
             git pull --ff-only
 
-            VERSION=$(grep -m1 -oP 'version: "\K[^"]+' backend/mix.exs)
-            docker build -f backend/docker/Dockerfile --build-arg RELEASE_VERSION=$VERSION -t roxchain-explorer-backend backend
-            docker build -t roxchain-explorer-frontend frontend
+            # point the names the compose file uses at the images of this commit
+            docker tag "$BACKEND_IMAGE:$SHA" "$BACKEND_IMAGE:latest"
+            docker tag "$FRONTEND_IMAGE:$SHA" "$FRONTEND_IMAGE:latest"
+            BACKEND_ID=$(docker image inspect -f '{{.Id}}' "$BACKEND_IMAGE:$SHA")
+            FRONTEND_ID=$(docker image inspect -f '{{.Id}}' "$FRONTEND_IMAGE:$SHA")
 
             cd local
-            docker compose up -d
+            # recreate every container from the local images; never pull or build
+            docker compose up -d --force-recreate --pull never --no-build
+
+            # fail if no running container uses the new images
+            RUNNING=$(docker compose ps -q | xargs docker inspect -f '{{.Image}}')
+            echo "$RUNNING" | grep -qx "$BACKEND_ID" || { echo "backend is not running image $BACKEND_IMAGE:$SHA"; exit 1; }
+            echo "$RUNNING" | grep -qx "$FRONTEND_ID" || { echo "frontend is not running image $FRONTEND_IMAGE:$SHA"; exit 1; }
+
             sleep 30
             curl -fsS https://devnet.explorer.roxchain.io/api/v2/stats > /dev/null
             curl -fsS https://devnet.explorer.roxchain.io/ > /dev/null
 
+            # remove the sha tags of earlier deploys of these two images, then dangling layers
+            for IMG in "$BACKEND_IMAGE" "$FRONTEND_IMAGE"; do
+              docker images "$IMG" --format '{{.Tag}}' \
+                | grep -vx -e latest -e "$SHA" \
+                | xargs -r -I{} docker rmi "$IMG:{}" || true
+            done
             docker image prune -f
