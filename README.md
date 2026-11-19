@@ -52,3 +52,12 @@ Notes:
 - In `frontend.env`, values containing `#` (colours) must be in single quotes, or they are cut at the `#`.
 - The proxy forwards `/rpc` to the devnet RPC, because the RPC node rejects browser calls from other origins (CORS). In production, allow the explorer's domain in the RPC nodes' CORS settings or keep the proxy.
 - Always point the backend at the history/RPC nodes, never at pruned validators.
+- The devnet RPC accepts at most 20 requests per JSON-RPC batch and has TRACE disabled, so `backend.env` lowers the indexer batch sizes and sets `FETCH_REWARDS_WAY=manual`. Without these, block fetches fail and leave gaps in the indexed chain.
+
+## Devnet deployment
+
+`https://devnet.explorer.roxchain.io` runs on the sandbox host from `deploy/devnet/` (not from `local/`). Every push to `main` deploys it with `.github/workflows/devnet-workflow.yaml`: the images are built on GitHub, loaded on the host, and `docker compose up -d` is run in `deploy/devnet/`.
+
+- Settings: `deploy/devnet/backend.env` and `deploy/devnet/frontend.env`. Change them here and push; don't edit them on the host, or `git pull` on the host fails and blocks the next deploy.
+- Secrets: `deploy/devnet/.env` on the host only (see `.env.example`).
+- The host's nginx (not in this repo) routes the domain to the containers; see the comment at the top of `deploy/devnet/docker-compose.yml`.
