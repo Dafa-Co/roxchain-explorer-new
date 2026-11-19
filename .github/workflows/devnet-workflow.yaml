@@ -135,7 +135,15 @@ jobs:
             BACKEND_ID=$(docker image inspect -f '{{.Id}}' "$BACKEND_IMAGE:$SHA")
             FRONTEND_ID=$(docker image inspect -f '{{.Id}}' "$FRONTEND_IMAGE:$SHA")
 
-            cd local
+            cd deploy/devnet
+            test -f .env || { echo "missing deploy/devnet/.env on the host (see deploy/devnet/.env.example)"; exit 1; }
+
+            # one-time move: devnet used to run from local/ (compose project "local"); stop those
+            # containers so the ports are free. Volumes are kept: the database is reused below.
+            if [ -n "$(docker compose -p local ps -q 2>/dev/null)" ]; then
+              docker compose -p local down
+            fi
+
             # recreate every container from the local images; never pull or build
             docker compose up -d --force-recreate --pull never --no-build
 

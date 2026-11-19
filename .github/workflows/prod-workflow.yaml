@@ -256,10 +256,10 @@ jobs:
       - name: Smoke test
         run: |
           SVC="/api/v1/namespaces/$NAMESPACE/services"
-          kubectl get --raw "$SVC/explorer-backend:http/proxy/api/v2/stats" > /main/null
-          kubectl get --raw "$SVC/explorer-frontend:http/proxy/api/healthz" > /main/null
-          kubectl get --raw "$SVC/explorer-frontend:http/proxy/" > /main/null
-          kubectl get --raw "$SVC/explorer-proxy:http/proxy/healthz" > /main/null
+          kubectl get --raw "$SVC/explorer-backend:http/proxy/api/v2/stats" > /dev/null
+          kubectl get --raw "$SVC/explorer-frontend:http/proxy/api/healthz" > /dev/null
+          kubectl get --raw "$SVC/explorer-frontend:http/proxy/" > /dev/null
+          kubectl get --raw "$SVC/explorer-proxy:http/proxy/healthz" > /dev/null
           echo "backend, frontend and proxy answer"
 
       - name: Show why the rollout failed
