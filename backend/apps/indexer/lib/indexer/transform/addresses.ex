@@ -99,6 +99,15 @@ defmodule Indexer.Transform.Addresses do
         %{from: :block_number, to: :fetched_coin_balance_block_number},
         %{from: :to_address_hash, to: :hash}
       ],
+      # RoxChain: the fixed fee moves ROX from the fee payer to the treasury in this block
+      [
+        %{from: :block_number, to: :fetched_coin_balance_block_number},
+        %{from: :rox_fee_payer_hash, to: :hash}
+      ],
+      [
+        %{from: :block_number, to: :fetched_coin_balance_block_number},
+        %{from: :rox_fee_treasury_hash, to: :hash}
+      ],
       [
         %{from: :execution_node_hash, to: :hash},
         %{from: :wrapped_to_address_hash, to: :hash}

@@ -27,8 +27,11 @@ Other consequences:
 
 ## Changes from upstream
 
-- **Backend:** code for other chains removed (Optimism, Arbitrum, Celo, zkSync, Filecoin, and so on); only the default chain type remains.
+- **Backend:**
+  - Code for other chains removed (Optimism, Arbitrum, Celo, zkSync, Filecoin, and so on); only the default chain type remains.
+  - Shows RoxChain's fixed transaction fee and who paid it (see [Transaction fees](#transaction-fees)).
 - **Frontend:**
+  - The transaction page shows the fee payer next to the fee.
   - RoxChain branding: logo, favicons, colours, footer, titles. "Blockscout" removed from the UI.
   - Removed: all ads and sponsored banners, the page-view tracking call to Blockscout, the API docs page, the contract verification pages, the "Other" menu and the "Add network" button.
   - Sidebar groups are listed in place (heading + links) instead of fly-out menus.
@@ -54,6 +57,13 @@ Notes:
 - Always point the backend at the history/RPC nodes, never at pruned validators.
 - The devnet RPC accepts at most 20 requests per JSON-RPC batch and has TRACE disabled, so `backend.env` lowers the indexer batch sizes and sets `FETCH_REWARDS_WAY=manual`. Without these, block fetches fail and leave gaps in the indexed chain.
 
+## Transaction fees
+
+Gas is free on RoxChain (gas price 0). The chain charges a **fixed fee for every transaction** instead, from the genesis block on, set in the genesis `config` of the RoxChain Besu node (`roxchain-besu`, `"roxFixedFee"`, see its `ROXCHAIN.md`). The chain takes it from a **fee-payer** account and credits it to a **treasury** account; senders need no ROX. Both balances really change on-chain.
+
+Besu reports it in each receipt as `roxFee` (wei), `roxFeePayer` and `roxFeeTreasury`. The explorer stores the fee and the fee payer in `transactions.rox_fee` and `rox_fee_payer_hash`, shows `rox_fee` as the transaction fee with the fee payer next to it, and refreshes the fee payer's and the treasury's balances in every block where they change. A chain without the rule shows the normal `gas used × gas price`.
+
+When the chain is restarted from genesis, reset the explorer's database too (it holds the old chain's blocks).
 ## Devnet deployment
 
 `https://devnet.explorer.roxchain.io` runs on the sandbox host from `deploy/devnet/` (not from `local/`). Every push to `main` deploys it with `.github/workflows/devnet-workflow.yaml`: the images are built on GitHub, loaded on the host, and `docker compose up -d` is run in `deploy/devnet/`.

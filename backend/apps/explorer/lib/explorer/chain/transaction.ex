@@ -51,6 +51,10 @@ defmodule Explorer.Chain.Transaction.Schema do
         field(:revert_reason, :string)
         field(:max_priority_fee_per_gas, Wei)
         field(:max_fee_per_gas, Wei)
+        # RoxChain: fixed fee paid under the chain's "roxFixedFee" rule (receipt roxFee*),
+        # taken from the fee payer and credited to the treasury
+        field(:rox_fee, Wei)
+        field(:rox_fee_payer_hash, Hash.Address)
         field(:type, :integer)
         field(:has_error_in_internal_transactions, :boolean)
         field(:has_token_transfers, :boolean, virtual: true)
@@ -162,7 +166,8 @@ defmodule Explorer.Chain.Transaction do
                      block_consensus block_timestamp created_contract_address_hash
                      cumulative_gas_used earliest_processing_start error gas_price
                      gas_used index created_contract_code_indexed_at status
-                     to_address_hash revert_reason type has_error_in_internal_transactions r s v)a
+                     to_address_hash revert_reason type has_error_in_internal_transactions r s v
+                     rox_fee rox_fee_payer_hash)a
 
   @chain_type_optional_attrs ~w()a
 
@@ -1745,8 +1750,26 @@ defmodule Explorer.Chain.Transaction do
       ...> )
       {:actual, Decimal.new(4)}
 
+  RoxChain: a confirmed transaction that paid the chain's fixed fee (receipt `roxFee`, taken from
+  the fee payer on-chain) reports that fee; its gas is free.
+
+      iex> Explorer.Chain.Transaction.fee(
+      ...>   %Explorer.Chain.Transaction{
+      ...>     gas: Decimal.new(60000),
+      ...>     gas_price: %Explorer.Chain.Wei{value: Decimal.new(0)},
+      ...>     gas_used: Decimal.new(54451),
+      ...>     rox_fee: %Explorer.Chain.Wei{value: Decimal.new(10_000_000_000_000)}
+      ...>   },
+      ...>   :wei
+      ...> )
+      {:actual, Decimal.new(10_000_000_000_000)}
+
   """
   @spec fee(__MODULE__.t(), :ether | :gwei | :wei) :: {:maximum, Decimal.t() | nil} | {:actual, Decimal.t() | nil}
+  def fee(%__MODULE__{gas_used: gas_used, rox_fee: %Wei{} = rox_fee}, unit) when not is_nil(gas_used) do
+    {:actual, Wei.to(rox_fee, unit)}
+  end
+
   def fee(%__MODULE__{gas: _gas, gas_price: nil, gas_used: nil}, _unit), do: {:maximum, nil}
 
   def fee(%__MODULE__{gas: gas, gas_price: _gas_price, gas_used: nil} = transaction, unit) do

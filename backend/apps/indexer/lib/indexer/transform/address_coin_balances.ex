@@ -121,5 +121,17 @@ defmodule Indexer.Transform.AddressCoinBalances do
     |> (&transactions_params_chain_type_fields_reducer(transaction_params, &1)).()
   end
 
+  # RoxChain: the fixed fee changes the fee payer's and the treasury's balances in this block,
+  # although neither appears as the sender or recipient
+  defp transactions_params_chain_type_fields_reducer(
+         %{block_number: block_number, rox_fee_payer_hash: payer, rox_fee_treasury_hash: treasury},
+         acc
+       )
+       when is_binary(payer) and is_binary(treasury) do
+    acc
+    |> MapSet.put(%{address_hash: payer, block_number: block_number})
+    |> MapSet.put(%{address_hash: treasury, block_number: block_number})
+  end
+
   defp transactions_params_chain_type_fields_reducer(_, acc), do: acc
 end

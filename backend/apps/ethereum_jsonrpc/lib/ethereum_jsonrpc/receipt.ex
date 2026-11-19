@@ -143,7 +143,20 @@ defmodule EthereumJSONRPC.Receipt do
       transaction_index: transaction_index
     }
     |> maybe_append_gas_price(elixir)
+    |> maybe_append_rox_fee(elixir)
   end
+
+  # RoxChain: the fixed fee the transaction paid (genesis "roxFixedFee" of the RoxChain Besu node),
+  # taken from the fee payer and credited to the treasury
+  defp maybe_append_rox_fee(params, %{"roxFee" => rox_fee} = elixir) when not is_nil(rox_fee) do
+    Map.merge(params, %{
+      rox_fee: rox_fee,
+      rox_fee_payer_hash: elixir["roxFeePayer"],
+      rox_fee_treasury_hash: elixir["roxFeeTreasury"]
+    })
+  end
+
+  defp maybe_append_rox_fee(params, _), do: params
 
   defp maybe_append_gas_price(params, %{"effectiveGasPrice" => effective_gas_price}) do
     if is_nil(effective_gas_price) do
@@ -269,14 +282,14 @@ defmodule EthereumJSONRPC.Receipt do
   # gas is passed in from the `t:EthereumJSONRPC.Transaction.params/0` to allow pre-Byzantium status to be derived
   defp entry_to_elixir({key, _} = entry)
        when key in ~w(blockHash contractAddress from gas logsBloom root to transactionHash
-                      revertReason type l1FeeScalar),
+                      revertReason type l1FeeScalar roxFeePayer roxFeeTreasury),
        do: {:ok, entry}
 
   defp entry_to_elixir({key, quantity})
        when key in ~w(blockNumber cumulativeGasUsed gasUsed transactionIndex blobGasUsed
                       blobGasPrice l1Fee l1GasPrice l1GasUsed effectiveGasPrice gasUsedForL1
                       l1BlobBaseFeeScalar l1BlobBaseFee l1BaseFeeScalar operatorFeeScalar
-                      operatorFeeConstant daFootprintGasScalar) do
+                      operatorFeeConstant daFootprintGasScalar roxFee) do
     result =
       if is_nil(quantity) do
         nil

@@ -497,6 +497,8 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
       "confirmation_duration" => processing_time_duration(transaction),
       "value" => transaction.value,
       "fee" => transaction |> Transaction.fee(:wei) |> format_fee(),
+      # RoxChain: who paid the chain's fixed fee
+      "rox_fee_payer" => transaction.rox_fee_payer_hash && to_string(transaction.rox_fee_payer_hash),
       "gas_price" => transaction.gas_price || Transaction.effective_gas_price(transaction),
       "type" => transaction.type,
       "gas_used" => transaction.gas_used,

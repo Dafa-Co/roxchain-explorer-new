@@ -37,6 +37,8 @@ export type Transaction = {
   from: AddressParam;
   value: string;
   fee: Fee;
+  // RoxChain: account the chain's fixed fee was taken from (null without it)
+  rox_fee_payer?: string | null;
   gas_price: string | null;
   type: number | null;
   gas_used: string | null;

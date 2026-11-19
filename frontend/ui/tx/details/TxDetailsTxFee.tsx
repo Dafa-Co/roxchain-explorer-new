@@ -1,3 +1,4 @@
+import { Flex, Text } from '@chakra-ui/react';
 import BigNumber from 'bignumber.js';
 import React from 'react';
 
@@ -6,6 +7,7 @@ import type { Transaction } from 'types/api/transaction';
 import config from 'configs/app';
 import * as DetailedInfo from 'ui/shared/DetailedInfo/DetailedInfo';
 import * as DetailedInfoItemBreakdown from 'ui/shared/DetailedInfo/DetailedInfoItemBreakdown';
+import AddressEntity from 'ui/shared/entities/address/AddressEntity';
 import TxFee from 'ui/shared/tx/TxFee';
 import NativeCoinValue from 'ui/shared/value/NativeCoinValue';
 
@@ -15,6 +17,9 @@ interface Props {
 }
 
 const TxDetailsTxFee = ({ isLoading, data }: Props) => {
+
+  // RoxChain: the account that paid the chain's fixed fee for this transaction
+  const feePayer = React.useMemo(() => (data.rox_fee_payer ? { hash: data.rox_fee_payer } : undefined), [ data.rox_fee_payer ]);
 
   if (config.UI.views.tx.hiddenFields?.tx_fee) {
     return null;
@@ -102,6 +107,12 @@ const TxDetailsTxFee = ({ isLoading, data }: Props) => {
       </DetailedInfo.ItemLabel>
       <DetailedInfo.ItemValue multiRow>
         { content }
+        { feePayer && (
+          <Flex alignItems="center" columnGap={ 2 } ml={ 3 }>
+            <Text color="text.secondary">paid by</Text>
+            <AddressEntity address={ feePayer } isLoading={ isLoading } truncation="constant"/>
+          </Flex>
+        ) }
       </DetailedInfo.ItemValue>
     </>
   );
