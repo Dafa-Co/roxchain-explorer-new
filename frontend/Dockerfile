@@ -210,6 +210,10 @@ COPY ./configs/envs ./configs/envs
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# node-datachannel (via @helia/verified-fetch -> libp2p) loads its native binary from a per-platform
+# package chosen at runtime (@node-datachannel/linux-x64-musl, ...). Output tracing cannot see it, so the
+# standalone build leaves it out and every page importing helia (address, token) fails with a 500.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@node-datachannel ./node_modules/@node-datachannel
 
 # Commit shown in the UI footer. Set last, so a new value only rebuilds this small layer; the
 # entrypoint (make_envs_script.sh) passes NEXT_PUBLIC_* variables to the browser at startup.
