@@ -18,9 +18,10 @@ import TxStatus from 'ui/shared/statusTag/TxStatus';
 import TimeWithTooltip from 'ui/shared/time/TimeWithTooltip';
 import TxFee from 'ui/shared/tx/TxFee';
 import TxWatchListTags from 'ui/shared/tx/TxWatchListTags';
-import NativeCoinValue from 'ui/shared/value/NativeCoinValue';
 import TxAdditionalInfo from 'ui/txs/TxAdditionalInfo';
 import TxType from 'ui/txs/TxType';
+
+import LatestTxsValue from './LatestTxsValue';
 
 type Props = {
   tx: Transaction;
@@ -83,12 +84,7 @@ const LatestTxsItem = ({ tx, isLoading }: Props) => {
           { !config.UI.views.tx.hiddenFields?.value && (
             <Skeleton loading={ isLoading } w="fit-content">
               <Text as="span">Value </Text>
-              <NativeCoinValue
-                amount={ tx.value }
-                accuracy={ 5 }
-                loading={ isLoading }
-                color="text.secondary"
-              />
+              <LatestTxsValue tx={ tx } isLoading={ isLoading }/>
             </Skeleton>
           ) }
           { !config.UI.views.tx.hiddenFields?.tx_fee && (
