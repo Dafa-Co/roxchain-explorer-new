@@ -479,7 +479,7 @@ const BlockDetails = ({ query }: Props) => {
         </>
       ) }
 
-      { data.base_fee_per_gas && (
+      { !config.UI.views.block.hiddenFields?.base_fee && data.base_fee_per_gas && (
         <>
           <DetailedInfo.ItemLabel
             hint="Minimum fee required per unit of gas. Fee adjusts based on network congestion"
