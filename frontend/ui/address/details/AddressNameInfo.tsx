@@ -2,6 +2,7 @@ import React from 'react';
 
 import type { Address } from 'types/api/address';
 
+import { NFT_TOKEN_TYPE_IDS } from 'lib/token/tokenTypes';
 import { Skeleton } from 'toolkit/chakra/skeleton';
 import * as DetailedInfo from 'ui/shared/DetailedInfo/DetailedInfo';
 import TokenEntity from 'ui/shared/entities/token/TokenEntity';
@@ -13,13 +14,15 @@ interface Props {
 
 const AddressNameInfo = ({ data, isLoading }: Props) => {
   if (data.token) {
+    // RoxChain: NFT contracts (ERC-721 / ERC-1155 / ERC-404) are collections of NFTs
+    const isNft = NFT_TOKEN_TYPE_IDS.some((type) => type === data.token?.type);
     return (
       <>
         <DetailedInfo.ItemLabel
-          hint="Token name and symbol"
+          hint={ isNft ? 'NFT collection name and symbol' : 'Token name and symbol' }
           isLoading={ isLoading }
         >
-          Token name
+          { isNft ? 'NFT collection' : 'Token name' }
         </DetailedInfo.ItemLabel>
         <DetailedInfo.ItemValue>
           <TokenEntity
