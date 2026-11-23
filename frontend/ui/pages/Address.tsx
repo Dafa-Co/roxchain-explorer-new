@@ -18,6 +18,7 @@ import getQueryParamString from 'lib/router/getQueryParamString';
 import useEtherscanRedirects from 'lib/router/useEtherscanRedirects';
 import useSocketChannel from 'lib/socket/useSocketChannel';
 import useSocketMessage from 'lib/socket/useSocketMessage';
+import { NFT_TOKEN_TYPE_IDS } from 'lib/token/tokenTypes';
 import useFetchXStarScore from 'lib/xStarScore/useFetchXStarScore';
 import { ADDRESS_TABS_COUNTERS } from 'stubs/address';
 import { USER_OPS_ACCOUNT } from 'stubs/userOps';
@@ -360,7 +361,14 @@ const AddressPageContent = () => {
       addressQuery.data?.implementations?.length && addressQuery.data?.proxy_type === 'eip7702' ?
         { slug: 'eip7702', name: 'EOA+code', tagType: 'custom' as const, ordinal: PREDEFINED_TAG_PRIORITY } :
         undefined,
-      addressQuery.data?.token ? { slug: 'token', name: 'Token', tagType: 'custom' as const, ordinal: PREDEFINED_TAG_PRIORITY } : undefined,
+      addressQuery.data?.token ? {
+        // RoxChain: call NFT contracts (ERC-721 / ERC-1155 / ERC-404) what they are
+        ...(NFT_TOKEN_TYPE_IDS.some((type) => type === addressQuery.data?.token?.type) ?
+          { slug: 'nft_collection', name: 'NFT collection' } :
+          { slug: 'token', name: 'Token' }),
+        tagType: 'custom' as const,
+        ordinal: PREDEFINED_TAG_PRIORITY,
+      } : undefined,
       isSafeAddress ? { slug: 'safe', name: 'Multisig: Safe', tagType: 'custom' as const, ordinal: -10 } : undefined,
       addressProfileAPIFeature.isEnabled && usernameApiTag ? {
         slug: 'username_api',

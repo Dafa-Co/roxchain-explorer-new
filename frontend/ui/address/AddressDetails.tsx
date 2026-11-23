@@ -26,6 +26,7 @@ import AddressCeloAccount from './details/AddressCeloAccount';
 import AddressImplementations from './details/AddressImplementations';
 import AddressNameInfo from './details/AddressNameInfo';
 import AddressNetWorth from './details/AddressNetWorth';
+import AddressNftPreview from './details/AddressNftPreview';
 import FilecoinActorTag from './filecoin/FilecoinActorTag';
 import TokenSelect from './tokenSelect/TokenSelect';
 import type { AddressCountersQuery } from './utils/useAddressCountersQuery';
@@ -142,6 +143,8 @@ const AddressDetails = ({ addressQuery, countersQuery, isLoading }: Props) => {
         ) }
 
         <AddressNameInfo data={ data } isLoading={ isLoading }/>
+
+        { data.token && <AddressNftPreview token={ data.token } isLoading={ isLoading }/> }
 
         { data.is_contract && data.creation_transaction_hash && (creatorAddressHash) && (
           <>

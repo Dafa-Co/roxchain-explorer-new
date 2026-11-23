@@ -6,10 +6,11 @@ import config from 'configs/app';
 const tokenStandardName = config.chain.tokenStandard;
 const additionalTokenTypes = config.chain.additionalTokenTypes;
 
+// RoxChain: display names say "NFT" (the ids, used in the API and the code, stay ERC-721 / ERC-1155 / ERC-404)
 export const NFT_TOKEN_TYPES: Record<NFTTokenType, string> = {
-  'ERC-721': `${ tokenStandardName }-721`,
-  'ERC-1155': `${ tokenStandardName }-1155`,
-  'ERC-404': `${ tokenStandardName }-404`,
+  'ERC-721': `NFT (${ tokenStandardName }-721)`,
+  'ERC-1155': `NFT (${ tokenStandardName }-1155)`,
+  'ERC-404': `NFT (${ tokenStandardName }-404)`,
 };
 
 export const getTokenTypes = (nftOnly: boolean, chainConfig: Array<ClusterChainConfig['app_config']> | ClusterChainConfig['app_config'] = config) => {
